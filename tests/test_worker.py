@@ -57,10 +57,12 @@ def test_requeue_stale_jobs(db, settings, monkeypatch):
     add_job("fresh", status="running", started_at=utcnow())
     add_job("stale", status="running", started_at=old)
     add_job("twice", status="running", started_at=old, requeues=1)
+    add_job("lost", status="queued", created_at=old)  # saved while Redis was down
+    add_job("new", status="queued")
     enqueued = []
     monkeypatch.setattr(tasks, "enqueue_job", lambda job_id, s: enqueued.append(job_id))
-    assert tasks.requeue_stale_jobs(settings) == 1
-    assert enqueued == ["stale"]
+    assert tasks.requeue_stale_jobs(settings) == 2
+    assert sorted(enqueued) == ["lost", "stale"]
     with session_scope() as s:
         assert s.get(Job, "fresh").status == "running"
         assert s.get(Job, "stale").status == "queued"

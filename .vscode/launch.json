@@ -1,0 +1,51 @@
+{
+  // Run and Debug panel (Ctrl+Shift+D). Put breakpoints in agent/graph.py to watch the agent think.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Level 1: fix-local on ../shop-demo",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "redtogreen.cli",
+      "args": ["fix-local", "${workspaceFolder}/../shop-demo"],
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
+    },
+    {
+      "name": "Level 2: fix-github (asks for repo and run id)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "redtogreen.cli",
+      "args": ["fix-github", "${input:repo}", "${input:runId}"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Level 3: API server (localhost:8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "redtogreen.cli",
+      "args": ["serve", "--port", "8000"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Level 3: worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "redtogreen.cli",
+      "args": ["worker"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Benchmark: oracle (no API key needed)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "redtogreen.cli",
+      "args": ["bench", "--llm", "oracle", "--only", "B01,B10"],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  "inputs": [
+    { "id": "repo", "type": "promptString", "description": "owner/repo", "default": "your-name/shop-demo" },
+    { "id": "runId", "type": "promptString", "description": "Failed workflow run id (from the run URL)" }
+  ]
+}

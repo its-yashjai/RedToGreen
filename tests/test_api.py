@@ -65,6 +65,18 @@ def test_duplicate_delivery_and_duplicate_run(client):
     assert len(client.enqueued) == 1
 
 
+def test_queue_down_returns_503_and_keeps_the_job(db, settings):
+    def broken_enqueue(job_id, _settings):
+        raise ConnectionError("redis down")
+
+    s = settings.model_copy(update={"github_webhook_secret": SECRET})
+    c = TestClient(create_app(s, enqueue_fn=broken_enqueue))
+    r = post(c, failed_run_payload())
+    assert r.status_code == 503
+    with session_scope() as session:
+        assert session.query(Job).one().status == "queued"  # the recovery sweep will enqueue it
+
+
 def test_skips_success_and_own_branches(client):
     assert "skipped" in post(client, failed_run_payload(conclusion="success"), delivery="a").json()["message"]
     assert "loop" in post(client, failed_run_payload(branch="redtogreen/run-1"), delivery="b").json()["message"]
@@ -76,6 +88,17 @@ def test_manual_job_needs_admin_token(client):
     assert client.post("/api/jobs", json=body).status_code == 401
     r = client.post("/api/jobs", json=body, headers={"Authorization": "Bearer admin"})
     assert r.status_code == 202 and client.enqueued
+
+
+def test_retry_finished_job(client):
+    job_id = post(client, failed_run_payload()).json()["job_id"]
+    auth = {"Authorization": "Bearer admin"}
+    assert client.post(f"/api/jobs/{job_id}/retry", headers=auth).status_code == 409  # still queued
+    with session_scope() as s:
+        s.get(Job, job_id).status = "error"
+    assert client.post(f"/api/jobs/{job_id}/retry").status_code == 401
+    assert client.post(f"/api/jobs/{job_id}/retry", headers=auth).status_code == 202
+    assert client.enqueued == [job_id, job_id]
 
 
 def test_dashboard_and_job_pages(client):

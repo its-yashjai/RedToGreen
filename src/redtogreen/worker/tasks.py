@@ -76,8 +76,11 @@ def process_job(job_id: str) -> str:
 
 
 def requeue_stale_jobs(settings: Settings | None = None) -> int:
-    """Crash recovery. A job 'running' for too long means its worker died (crash, deploy, OOM).
-    Give it one more try; if it dies again, mark it as an error instead of looping forever."""
+    """Crash recovery, run when a worker starts.
+    - 'running' for too long: its worker died (crash, deploy, OOM). Give it one more try; if it dies
+      again, mark it as an error instead of looping forever.
+    - 'queued' for too long: the job was saved but never reached Redis (Redis was down). Enqueue it.
+      A duplicate queue entry is harmless because claim() lets only one worker run a job."""
     settings = settings or get_settings()
     cutoff = utcnow() - timedelta(minutes=settings.stale_job_minutes)
     requeued = []
@@ -89,6 +92,8 @@ def requeue_stale_jobs(settings: Settings | None = None) -> int:
             else:
                 job.status, job.requeues = "queued", job.requeues + 1
                 requeued.append(job.id)
+        lost = s.scalars(select(Job.id).where(Job.status == "queued", Job.created_at < cutoff)).all()
+        requeued.extend(j for j in lost if j not in requeued)
     for job_id in requeued:
         enqueue_job(job_id, settings)
     return len(requeued)

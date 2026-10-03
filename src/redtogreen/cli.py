@@ -83,7 +83,11 @@ def fix_local_cmd(
     from redtogreen.pipeline import apply_files, fix_local
 
     tracer = Tracer()
-    outcome = asyncio.run(fix_local(path, _settings(), tracer=tracer, keep=keep))
+    try:
+        outcome = asyncio.run(fix_local(path, _settings(), tracer=tracer, keep=keep))
+    except (ValueError, RuntimeError) as exc:  # configuration problems: say what to fix, no traceback
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from None
     if trace:
         _print_trace(tracer)
     _print_outcome(outcome)
@@ -101,13 +105,20 @@ def fix_github_cmd(
 ):
     """Level 2: fix a failed GitHub Actions run and open a pull request."""
     from redtogreen.github.fixer import fix_github_run, run_info_from_api
+    from redtogreen.github.git import GitError
+    from redtogreen.github.mcp import GitHubError
+    from redtogreen.mcp_clients.toolbox import MCPStartError
 
     settings = _settings()
     owner, _, name = repo.partition("/")
-    run = asyncio.run(run_info_from_api(owner, name, run_id, settings))
-    console.print(f"Run {run_id}: branch [bold]{run.head_branch}[/] commit {run.head_sha[:7]}")
     tracer = Tracer()
-    outcome = asyncio.run(fix_github_run(run, settings, tracer=tracer))
+    try:
+        run = asyncio.run(run_info_from_api(owner, name, run_id, settings))
+        console.print(f"Run {run_id}: branch [bold]{run.head_branch}[/] commit {run.head_sha[:7]}")
+        outcome = asyncio.run(fix_github_run(run, settings, tracer=tracer))
+    except (ValueError, RuntimeError, GitHubError, GitError, MCPStartError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from None
     _print_trace(tracer)
     _print_outcome(outcome)
 

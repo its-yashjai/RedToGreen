@@ -58,6 +58,19 @@ def github_client(settings: Settings) -> Client:
     return Client(params, read_timeout_seconds=300)
 
 
+def open_github(settings: Settings):
+    """Connect to GitHub's MCP server with a clear error if it cannot start."""
+    from redtogreen.mcp_clients.toolbox import connect
+
+    hints = {
+        "docker": f"Is Docker running? Try: docker pull {settings.github_mcp_image}",
+        "binary": f"Is '{settings.github_mcp_binary}' installed and on your PATH?",
+        "remote": f"Can this machine reach {settings.github_mcp_url}, and is GITHUB_TOKEN valid?",
+    }
+    hint = f"Could not start GitHub's MCP server (GITHUB_MCP_MODE={settings.github_mcp_mode}). "
+    return connect(github_client(settings), hint + hints[settings.github_mcp_mode])
+
+
 def _json(text: str):
     try:
         return json.loads(text)

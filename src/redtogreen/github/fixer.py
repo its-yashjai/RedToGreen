@@ -5,7 +5,7 @@ import shutil
 from redtogreen.config import Settings
 from redtogreen.github.events import RunInfo
 from redtogreen.github.git import clone_at_sha, remote_head
-from redtogreen.github.mcp import GitHubOps, github_client
+from redtogreen.github.mcp import GitHubOps, open_github
 from redtogreen.llm import get_llm
 from redtogreen.llm.base import LLM
 from redtogreen.pipeline import FixOutcome, new_job_dir, run_agent
@@ -42,7 +42,7 @@ async def fix_github_run(run: RunInfo, settings: Settings, job_id: str = "", llm
     job_dir = new_job_dir(settings, "gh")
     job_url = f"{settings.public_url.rstrip('/')}/jobs/{job_id}" if job_id else "(CLI run)"
     try:
-        async with github_client(settings) as client:
+        async with open_github(settings) as client:
             gh = GitHubOps(client)
             with tracer.span(0, "github", "get_job_logs") as step:
                 ci_log = await gh.failed_logs(run.owner, run.repo, run.run_id)
@@ -93,7 +93,7 @@ async def fix_github_run(run: RunInfo, settings: Settings, job_id: str = "", llm
 
 async def run_info_from_api(owner: str, repo: str, run_id: int, settings: Settings) -> RunInfo:
     """CLI mode: look up a run's commit and branch through the GitHub MCP server."""
-    async with github_client(settings) as client:
+    async with open_github(settings) as client:
         data = await GitHubOps(client).workflow_run(owner, repo, run_id)
     return RunInfo(
         owner=owner,

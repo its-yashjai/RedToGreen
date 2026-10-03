@@ -81,8 +81,32 @@ def sandbox_server_params(workspace: Path, settings: Settings) -> StdioServerPar
     )
 
 
+class MCPStartError(RuntimeError):
+    """An MCP server could not be started or reached."""
+
+
+@asynccontextmanager
+async def connect(client: Client, hint: str):
+    """Enter an MCP client; if the server cannot start, raise one clear error instead of a
+    nested ExceptionGroup traceback."""
+    try:
+        await client.__aenter__()
+    except Exception as exc:
+        raise MCPStartError(f"{hint} (cause: {type(exc).__name__}: {exc})") from exc
+    try:
+        yield client
+    except BaseException as exc:
+        await client.__aexit__(type(exc), exc, exc.__traceback__)
+        raise
+    else:
+        await client.__aexit__(None, None, None)
+
+
 @asynccontextmanager
 async def open_sandbox(workspace: Path, settings: Settings):
     """Start the sandbox MCP server for this workspace and yield a Client connected to it."""
-    async with Client(sandbox_server_params(workspace, settings), read_timeout_seconds=600) as client:
-        yield client
+    client = Client(sandbox_server_params(workspace, settings), read_timeout_seconds=600)
+    hint = ("Could not start the sandbox MCP server. Is Docker running, and is the image built "
+            "(redtogreen sandbox-build)? The server's own error is printed above.")
+    async with connect(client, hint) as connected:
+        yield connected

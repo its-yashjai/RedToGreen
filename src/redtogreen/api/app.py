@@ -2,6 +2,7 @@
 
 POST /webhooks/github   GitHub calls this when a workflow run completes
 POST /api/jobs          manual trigger (needs ADMIN_TOKEN)
+POST /api/jobs/{id}/retry  run a finished job again (needs ADMIN_TOKEN)
 GET  /api/jobs[/{id}]   JSON
 GET  /                  dashboard (auto-refreshes with HTMX)
 GET  /jobs/{id}         one job: attempts, diffs, full trace
@@ -57,7 +58,11 @@ def create_app(settings: Settings | None = None, enqueue_fn=enqueue) -> FastAPI:
         except IntegrityError:
             session.rollback()
             return None
-        enqueue_fn(job.id, settings)
+        try:
+            enqueue_fn(job.id, settings)
+        except Exception as exc:
+            # The row is saved; the recovery sweep (requeue_stale_jobs) will enqueue it later.
+            raise HTTPException(503, f"job {job.id} saved but the queue is unavailable; it will be retried") from exc
         return job
 
     # ------------------------------------------------------------------ webhook
@@ -111,6 +116,20 @@ def create_app(settings: Settings | None = None, enqueue_fn=enqueue) -> FastAPI:
         job = new_job(session, RunInfo(owner, repo, body.run_id, body.head_sha, body.head_branch, body.pr_numbers))
         if job is None:
             raise HTTPException(409, "a job for this run already exists")
+        return {"job_id": job.id}
+
+    @app.post("/api/jobs/{job_id}/retry", status_code=202, dependencies=[Depends(require_admin)])
+    def retry_job(job_id: str, session: Session = Depends(get_session)):
+        """Run a finished job again (e.g. after fixing a config problem). Old attempts and trace are cleared."""
+        job = load_job(session, job_id)
+        if job.status not in FINISHED:
+            raise HTTPException(409, f"job is {job.status}; only finished jobs can be retried")
+        job.attempts.clear()
+        job.steps.clear()
+        job.status, job.error, job.explanation, job.diff, job.pr_url = "queued", "", "", "", ""
+        job.started_at = job.finished_at = None
+        session.commit()
+        enqueue_fn(job.id, settings)
         return {"job_id": job.id}
 
     @app.get("/api/jobs")
