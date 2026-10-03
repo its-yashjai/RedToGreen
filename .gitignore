@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
+*.db
+/work/
+benchmark/results/*.json
+benchmark/results/*.md
+!benchmark/results/.gitkeep
