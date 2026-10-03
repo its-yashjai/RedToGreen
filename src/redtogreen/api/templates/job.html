@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id }} · RedToGreen{% endblock %}
+{% block content %}
+<p><a href="/">&larr; all jobs</a></p>
+<h1>Job {{ job.id }} <span class="badge {{ job.status }}">{{ job.status.replace('_', ' ') }}</span></h1>
+
+<dl class="meta">
+  <dt>Repository</dt><dd>{{ job.repo }}</dd>
+  <dt>Failed run</dt><dd>{% if job.run_url %}<a href="{{ job.run_url }}" target="_blank" rel="noopener">{{ job.run_id }}</a>{% else %}{{ job.run_id }}{% endif %} on <code>{{ job.head_branch }}</code> @ <code>{{ job.head_sha[:7] }}</code></dd>
+  <dt>Pull request</dt><dd>{% if job.pr_url %}<a href="{{ job.pr_url }}" target="_blank" rel="noopener">{{ job.pr_url }}</a>{% else %}–{% endif %}</dd>
+  <dt>Attempts</dt><dd>{{ job.attempts_used }}</dd>
+  <dt>Tokens / cost</dt><dd>{{ job.input_tokens + job.output_tokens }} tokens · ${{ '%.4f' | format(job.cost_usd) }}</dd>
+  <dt>Duration</dt><dd>{{ '%.1f' | format(job.duration_s) }}s</dd>
+</dl>
+
+{% if job.explanation %}<h2>Agent's explanation</h2><pre class="box">{{ job.explanation }}</pre>{% endif %}
+{% if job.error %}<h2>Error</h2><pre class="box error">{{ job.error }}</pre>{% endif %}
+
+<h2>Attempts</h2>
+{% for a in job.attempts %}
+  <details {% if loop.last %}open{% endif %}>
+    <summary>Attempt {{ a.number }} — {% if a.passed %}<span class="badge pr_opened">tests passed</span>{% elif a.violations %}<span class="badge error">blocked by rules</span>{% else %}<span class="badge gave_up">tests failed</span>{% endif %}</summary>
+    {% if a.violations %}<ul>{% for v in a.violations %}<li>{{ v }}</li>{% endfor %}</ul>{% endif %}
+    {% if a.diff %}<pre class="diff">{% for line in a.diff.splitlines() %}<span class="{% if line.startswith('+') and not line.startswith('+++') %}add{% elif line.startswith('-') and not line.startswith('---') %}del{% endif %}">{{ line }}</span>
+{% endfor %}</pre>{% endif %}
+    {% if a.test_summary %}<pre class="box small">{{ a.test_summary[-3000:] }}</pre>{% endif %}
+  </details>
+{% else %}
+  <p class="empty">No attempts recorded yet.</p>
+{% endfor %}
+
+<h2>Trace</h2>
+<div class="table-wrap">
+<table class="trace">
+  <thead><tr><th>#</th><th>Attempt</th><th>Node</th><th>Tool</th><th>ms</th><th>Tokens</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for s in job.steps %}
+    <tr class="{{ 'bad' if not s.ok }}">
+      <td>{{ loop.index }}</td><td>{{ s.attempt }}</td><td>{{ s.node }}</td><td>{{ s.tool }}</td>
+      <td>{{ s.ms }}</td><td>{{ s.input_tokens + s.output_tokens }}</td><td class="detail">{{ s.detail }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
