@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint and tests (incl. real Docker sandbox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - name: Build the sandbox image
+        run: docker build -t redtogreen-sandbox:latest sandbox/
+      - run: pytest
+
+  benchmark-pipeline:
+    name: Benchmark plumbing + sandbox attacks (no LLM needed)
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SANDBOX_BACKEND: docker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: docker build -t redtogreen-sandbox:latest sandbox/
+      - name: Every seeded bug really breaks the tests
+        run: redtogreen bench --verify
+      - name: Full pipeline with the oracle LLM must fix 100%
+        run: redtogreen bench --llm oracle --min-fix-rate 1.0
+      - name: Sandbox attacks must all be blocked
+        run: redtogreen attacks
+
+  benchmark-real:
+    name: Real LLM benchmark (quality gate)
+    needs: benchmark-pipeline
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SANDBOX_BACKEND: docker
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+      LLM_MODEL: ${{ vars.LLM_MODEL }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: docker build -t redtogreen-sandbox:latest sandbox/
+      - name: Run benchmark (skipped when no LLM is configured)
+        if: env.LLM_MODEL != ''
+        # The gate starts at 0 and is raised to just below your first real baseline (repo variable).
+        run: redtogreen bench --llm real --min-fix-rate ${{ vars.MIN_FIX_RATE || '0' }}
+      - uses: actions/upload-artifact@v4
+        if: always() && env.LLM_MODEL != ''
+        with:
+          name: benchmark-results
+          path: benchmark/results/

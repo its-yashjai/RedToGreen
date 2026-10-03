@@ -1,0 +1,86 @@
+# One command runs everything:  docker compose up --build
+# More workers:                 docker compose up --build --scale worker=3
+
+x-app: &app
+  build: .
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DATABASE_URL: postgresql+psycopg://redtogreen:redtogreen@postgres:5432/redtogreen
+    REDIS_URL: redis://redis:6379/0
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: redtogreen
+      POSTGRES_PASSWORD: redtogreen
+      POSTGRES_DB: redtogreen
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redtogreen"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Builds the image the repos' tests run in (the container itself just exits).
+  sandbox-image:
+    build: ./sandbox
+    image: redtogreen-sandbox:latest
+    command: ["true"]
+    restart: "no"
+
+  migrate:
+    <<: *app
+    command: ["redtogreen", "db-upgrade"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: *app
+    command: ["redtogreen", "serve", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      retries: 5
+
+  worker:
+    <<: *app
+    command: ["redtogreen", "worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://redtogreen:redtogreen@postgres:5432/redtogreen
+      REDIS_URL: redis://redis:6379/0
+      SANDBOX_BACKEND: docker
+      WORKDIR: /tmp/redtogreen-work
+    volumes:
+      # The worker starts sandbox containers through the host's Docker daemon ("sibling" containers).
+      # Security note: access to this socket is root-equivalent on the host. Only the worker gets it,
+      # and the untrusted code runs in the sandbox containers, which get none of this.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Must be the SAME path on the host and in the worker: the host's Docker daemon resolves
+      # bind-mount paths on the host, not inside this container.
+      - /tmp/redtogreen-work:/tmp/redtogreen-work
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      sandbox-image: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:

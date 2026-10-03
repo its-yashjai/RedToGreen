@@ -1,0 +1,24 @@
+# Production add-on: HTTPS in front of the API with Caddy (automatic Let's Encrypt certificates).
+# Usage on the VM:
+#   DOMAIN=redtogreen.example.com docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+
+services:
+  api:
+    ports: !reset []   # no public port; only Caddy talks to the API
+
+  caddy:
+    image: caddy:2
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your domain name}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
