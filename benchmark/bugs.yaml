@@ -1,0 +1,186 @@
+# 30 seeded bugs for the benchmark. Each bug is applied ALONE to a fresh copy of demo_repo:
+# the exact text `find` (must appear exactly once in `file`) is replaced by `replace`.
+# The agent never sees this file. `python -m redtogreen.cli bench --verify` checks that every
+# bug really makes the test suite fail.
+
+- id: B01
+  category: wrong_constant
+  file: shopkit/pricing.py
+  find: "price * percent / 100"
+  replace: "price * percent / 10"
+
+- id: B02
+  category: off_by_one
+  file: shopkit/pricing.py
+  find: "if order_total >= FREE_SHIPPING_ABOVE:"
+  replace: "if order_total > FREE_SHIPPING_ABOVE:"
+
+- id: B03
+  category: wrong_operator
+  file: shopkit/pricing.py
+  find: "amount * (1 + rate)"
+  replace: "amount * (1 - rate)"
+
+- id: B04
+  category: wrong_variable
+  file: shopkit/pricing.py
+  find: "with_tax + shipping_cost(discounted)"
+  replace: "with_tax + shipping_cost(with_tax)"
+
+- id: B05
+  category: logic
+  file: shopkit/pricing.py
+  find: "if percent < 0 or percent > 100:"
+  replace: "if percent < 0 and percent > 100:"
+
+- id: B06
+  category: wrong_operator
+  file: shopkit/cart.py
+  find: "self.items[sku].quantity += quantity"
+  replace: "self.items[sku].quantity = quantity"
+
+- id: B07
+  category: off_by_one
+  file: shopkit/cart.py
+  find: "if item.quantity <= 0:"
+  replace: "if item.quantity < 0:"
+
+- id: B08
+  category: missing_term
+  file: shopkit/cart.py
+  find: "sum(i.price * i.quantity for i in self.items.values())"
+  replace: "sum(i.price for i in self.items.values())"
+
+- id: B09
+  category: logic
+  file: shopkit/cart.py
+  find: "return len(self.items) == 0"
+  replace: "return len(self.items) != 0"
+
+- id: B10
+  category: missing_edge_case
+  file: shopkit/cart.py
+  find: |2
+            if not self.items:
+                return None
+  replace: ""
+
+- id: B11
+  category: missing_import
+  file: shopkit/cart.py
+  find: "from dataclasses import dataclass, field"
+  replace: "from dataclasses import dataclass"
+
+- id: B12
+  category: off_by_one
+  file: shopkit/inventory.py
+  find: "return self.stock.get(sku, 0) >= amount"
+  replace: "return self.stock.get(sku, 0) > amount"
+
+- id: B13
+  category: wrong_operator
+  file: shopkit/inventory.py
+  find: "self.stock[sku] -= amount"
+  replace: "self.stock[sku] += amount"
+
+- id: B14
+  category: off_by_one
+  file: shopkit/inventory.py
+  find: "if qty < threshold"
+  replace: "if qty <= threshold"
+
+- id: B15
+  category: missing_term
+  file: shopkit/inventory.py
+  find: "return sorted(sku for sku"
+  replace: "return list(sku for sku"
+
+- id: B16
+  category: missing_edge_case
+  file: shopkit/text.py
+  find: "return slug.strip(\"-\")"
+  replace: "return slug"
+
+- id: B17
+  category: off_by_one
+  file: shopkit/text.py
+  find: "text[: limit - len(suffix)] + suffix"
+  replace: "text[:limit] + suffix"
+
+- id: B18
+  category: off_by_one
+  file: shopkit/text.py
+  find: "if len(text) <= limit:"
+  replace: "if len(text) < limit:"
+
+- id: B19
+  category: missing_term
+  file: shopkit/text.py
+  find: "\"\".join(ch.lower() for ch in text if ch.isalnum())"
+  replace: "\"\".join(ch for ch in text if ch.isalnum())"
+
+- id: B20
+  category: missing_term
+  file: shopkit/text.py
+  find: "part[0].upper()"
+  replace: "part[0]"
+
+- id: B21
+  category: missing_edge_case
+  file: shopkit/validators.py
+  find: " and pincode[0] != \"0\""
+  replace: ""
+
+- id: B22
+  category: wrong_constant
+  file: shopkit/validators.py
+  find: "digits.startswith(\"91\")"
+  replace: "digits.startswith(\"+91\")"
+
+- id: B23
+  category: off_by_one
+  file: shopkit/validators.py
+  find: "len(password) >= 8"
+  replace: "len(password) > 8"
+
+- id: B24
+  category: wrong_regex
+  file: shopkit/validators.py
+  find: "(\\.[\\w-]+)+$"
+  replace: "(\\.[\\w-]+)*$"
+
+- id: B25
+  category: off_by_one
+  file: shopkit/stats.py
+  find: "(ordered[mid - 1] + ordered[mid]) / 2"
+  replace: "(ordered[mid] + ordered[mid + 1]) / 2"
+
+- id: B26
+  category: wrong_function
+  file: shopkit/stats.py
+  find: "return max(low, min(value, high))"
+  replace: "return min(low, max(value, high))"
+
+- id: B27
+  category: wrong_constant
+  file: shopkit/stats.py
+  find: "reverse=True"
+  replace: "reverse=False"
+
+- id: B28
+  category: logic
+  file: shopkit/dates.py
+  find: "year % 100 != 0 or year % 400 == 0"
+  replace: "year % 100 != 0 and year % 400 == 0"
+
+- id: B29
+  category: off_by_one
+  file: shopkit/dates.py
+  find: "int((distance_km - 50 + 299) // 300)"
+  replace: "int((distance_km - 50) // 300)"
+
+- id: B30
+  category: off_by_one
+  file: shopkit/dates.py
+  find: "return DAYS_IN_MONTH[month - 1]"
+  replace: "return DAYS_IN_MONTH[month]"
