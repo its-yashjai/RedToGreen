@@ -44,6 +44,28 @@ def _settings() -> Settings:
     return get_settings()
 
 
+def _root_error(exc: BaseException) -> BaseException:
+    """Async code wraps errors in ExceptionGroups; dig out the real one."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return exc
+
+
+def _explain(exc: BaseException) -> str:
+    """One clear line instead of a long traceback, with a hint for common LLM API errors."""
+    exc = _root_error(exc)
+    status = getattr(exc, "status_code", None)
+    hints = {
+        401: "the API key is wrong. Check LLM_API_KEY (or ANTHROPIC_API_KEY) in .env.",
+        403: "the API key is not allowed to use this model.",
+        404: "the model name is wrong. Check LLM_MODEL in .env against your provider's model list.",
+        429: "rate limit reached (common on free tiers). Wait a minute and try again.",
+    }
+    message = getattr(exc, "message", None) or str(exc)
+    hint = f"\nHint: {hints[status]}" if status in hints else ""
+    return f"{type(exc).__name__}: {message}{hint}"
+
+
 def _print_trace(tracer: Tracer) -> None:
     table = Table(title="Trace", show_lines=False)
     for col in ("attempt", "node", "tool", "ms", "tokens", "detail"):
@@ -85,8 +107,8 @@ def fix_local_cmd(
     tracer = Tracer()
     try:
         outcome = asyncio.run(fix_local(path, _settings(), tracer=tracer, keep=keep))
-    except (ValueError, RuntimeError) as exc:  # configuration problems: say what to fix, no traceback
-        console.print(f"[red]{exc}[/]")
+    except Exception as exc:  # say what to fix in one line, no traceback
+        console.print(f"[red]{_explain(exc)}[/]", highlight=False)
         raise typer.Exit(2) from None
     if trace:
         _print_trace(tracer)
@@ -105,9 +127,6 @@ def fix_github_cmd(
 ):
     """Level 2: fix a failed GitHub Actions run and open a pull request."""
     from redtogreen.github.fixer import fix_github_run, run_info_from_api
-    from redtogreen.github.git import GitError
-    from redtogreen.github.mcp import GitHubError
-    from redtogreen.mcp_clients.toolbox import MCPStartError
 
     settings = _settings()
     owner, _, name = repo.partition("/")
@@ -116,8 +135,8 @@ def fix_github_cmd(
         run = asyncio.run(run_info_from_api(owner, name, run_id, settings))
         console.print(f"Run {run_id}: branch [bold]{run.head_branch}[/] commit {run.head_sha[:7]}")
         outcome = asyncio.run(fix_github_run(run, settings, tracer=tracer))
-    except (ValueError, RuntimeError, GitHubError, GitError, MCPStartError) as exc:
-        console.print(f"[red]{exc}[/]")
+    except Exception as exc:
+        console.print(f"[red]{_explain(exc)}[/]", highlight=False)
         raise typer.Exit(2) from None
     _print_trace(tracer)
     _print_outcome(outcome)
