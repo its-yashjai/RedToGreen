@@ -48,6 +48,22 @@ class DockerSandbox:
         os.chmod(deps, 0o777)  # the container runs as 'nobody' and must be able to write here
         return deps
 
+    @staticmethod
+    def make_readable(workspace: Path) -> None:
+        """The container runs as 'nobody', so the job's copy must be world-readable. Machines with a
+        strict umask (e.g. GitHub Codespaces) create files only their owner can read. The code is
+        still mounted read-only, so this grants reading, never writing."""
+        for root, dirs, files in os.walk(workspace):
+            for name in dirs:
+                path = os.path.join(root, name)
+                if not os.path.islink(path):
+                    os.chmod(path, os.stat(path).st_mode | 0o555)
+            for name in files:
+                path = os.path.join(root, name)
+                if not os.path.islink(path):
+                    os.chmod(path, os.stat(path).st_mode | 0o444)
+        os.chmod(workspace, os.stat(workspace).st_mode | 0o555)
+
     def _hardening(self) -> dict:
         opts = {
             "user": NOBODY,
@@ -105,6 +121,7 @@ class DockerSandbox:
         if not requirements.exists():
             return "no requirements.txt: nothing to install"
         deps = self.deps_dir(workspace)
+        self.make_readable(workspace)
         result = self._run(
             ["python", "-m", "pip", "install", "--no-cache-dir", "--disable-pip-version-check",
              "--target", "/deps", "-r", "/workspace/requirements.txt"],
@@ -122,6 +139,7 @@ class DockerSandbox:
 
     def run_tests(self, workspace: Path, command: str) -> RunResult:
         deps = self.deps_dir(workspace)
+        self.make_readable(workspace)
         return self._run(
             ["sh", "-c", command],
             volumes={

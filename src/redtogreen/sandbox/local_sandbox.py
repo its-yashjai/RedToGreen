@@ -30,7 +30,9 @@ class LocalSandbox:
             args[0] = sys.executable  # use the interpreter we are running in
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": tempfile.gettempdir(),
+            # Keep the real HOME: pip --user installs (the default in Codespaces) live under it,
+            # and without them pytest cannot even start. This backend is not isolated anyway.
+            "HOME": os.environ.get("HOME", tempfile.gettempdir()),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": str(workspace),
         }
